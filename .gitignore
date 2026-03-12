@@ -1,0 +1,26 @@
+# Virtual environment
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Spark temp
+spark-warehouse/
+
+# Logs
+logs/
+
+# Streaming checkpoints
+checkpoints/
+
+# Delta output data
+data/delta_staging/
+data/curated/
+data/serving/
+
+# VSCode
+.vscode/
+
+# OS
+.DS_Store

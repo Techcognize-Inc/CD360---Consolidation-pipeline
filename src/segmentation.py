@@ -13,9 +13,7 @@ from pyspark.sql.functions import (
 from delta import configure_spark_with_delta_pip
 
 from config import (
-    HADOOP_HOME_DIR,
     SPARK_WAREHOUSE_DIR,
-    SPARK_LOCAL_DIR,
     LOG_DIR,
     DELTA_CUSTOMER_360,
     DELTA_SERVING_CUSTOMER_SEGMENTS
@@ -24,14 +22,12 @@ from logger import get_logger
 
 
 # ---------------------------------
-# Windows / local setup
+# Linux / WSL setup
 # ---------------------------------
-os.environ["HADOOP_HOME"] = HADOOP_HOME_DIR
-os.environ["hadoop.home.dir"] = HADOOP_HOME_DIR
-os.environ["PATH"] = f"{HADOOP_HOME_DIR}\\bin;" + os.environ["PATH"]
+PROJECT_ROOT = "/mnt/c/Customer360"
 
-os.makedirs(r"C:\spark-temp", exist_ok=True)
-os.makedirs(r"C:\spark-work", exist_ok=True)
+os.makedirs("/tmp/spark-temp", exist_ok=True)
+os.makedirs("/tmp/spark-work", exist_ok=True)
 
 log = get_logger("segmentation", LOG_DIR)
 
@@ -43,12 +39,16 @@ builder = (
     SparkSession.builder
     .appName("customer360_segmentation")
     .master("local[*]")
-    .config("spark.local.dir", SPARK_LOCAL_DIR)
+    .config("spark.local.dir", "/tmp/spark-work")
     .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
     .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
     .config("spark.sql.warehouse.dir", SPARK_WAREHOUSE_DIR)
-    .config("spark.hadoop.io.native.lib.available", "false")
-    .config("spark.hadoop.fs.file.impl", "org.apache.hadoop.fs.RawLocalFileSystem")
+
+    # stability configs for Airflow execution
+    .config("spark.driver.memory", "6g")
+    .config("spark.executor.memory", "6g")
+    .config("spark.sql.shuffle.partitions", "16")
+    .config("spark.default.parallelism", "16")
 )
 
 spark = configure_spark_with_delta_pip(builder).getOrCreate()
@@ -98,29 +98,23 @@ seg_base = (
     )
 )
 
-# Optional: keep only active/non-deleted customers if your curated table has status
-if "customer_status" in seg_base.columns:
+# keep only active customers if column exists
+if "status" in seg_base.columns:
     seg_base = seg_base.filter(
-        col("customer_status").isNull() | (col("customer_status") != "DELETED")
+        col("status").isNull() | (col("status") != "DELETED")
     )
 
 
 # ---------------------------------
 # RFM bucket scores
 # ---------------------------------
-# Lower recency_days is better, so ascending
-# Higher frequency and monetary are better, so descending
+from pyspark.sql.window import Window
+
 seg_scored = (
     seg_base
-    .withColumn("r_score", ntile(4).over(
-        __import__("pyspark.sql").sql.Window.orderBy(col("recency_days").asc())
-    ))
-    .withColumn("f_score", ntile(4).over(
-        __import__("pyspark.sql").sql.Window.orderBy(col("frequency_score_raw").desc())
-    ))
-    .withColumn("m_score", ntile(4).over(
-        __import__("pyspark.sql").sql.Window.orderBy(col("monetary_score_raw").desc())
-    ))
+    .withColumn("r_score", ntile(4).over(Window.orderBy(col("recency_days").asc())))
+    .withColumn("f_score", ntile(4).over(Window.orderBy(col("frequency_score_raw").desc())))
+    .withColumn("m_score", ntile(4).over(Window.orderBy(col("monetary_score_raw").desc())))
 )
 
 seg_scored = seg_scored.withColumn(
@@ -161,7 +155,7 @@ segmented_df = (
         "city",
         "state",
         "zip",
-        "customer_status",
+        "status",
         "account_count",
         "total_account_balance",
         "avg_account_balance",
@@ -188,12 +182,13 @@ log.info(f"segmented output count = {segmented_df.count()}")
 
 
 # ---------------------------------
-# Write to serving Delta table
+# Write serving Delta table
 # ---------------------------------
 (
     segmented_df.write
     .format("delta")
     .mode("overwrite")
+    .option("overwriteSchema", "true")
     .save(DELTA_SERVING_CUSTOMER_SEGMENTS)
 )
 

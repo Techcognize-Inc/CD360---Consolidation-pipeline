@@ -19,6 +19,8 @@ DELTA_CUSTOMER_360 = (BASE_DATA_DIR / "curated" / "customer_360").as_uri()
 
 DELTA_SERVING_CUSTOMER_SEGMENTS = (BASE_DATA_DIR / "serving" / "customer_segments").as_uri()
 
+DELTA_WATERMARK = (BASE_DATA_DIR / "control" / "watermark_config").as_uri()
+
 DELTA_DEAD_LETTER_CUSTOMERS = (BASE_DATA_DIR / "delta_staging" / "dead_letter" / "customers").as_uri()
 DELTA_DEAD_LETTER_ACCOUNTS = (BASE_DATA_DIR / "delta_staging" / "dead_letter" / "accounts").as_uri()
 DELTA_DEAD_LETTER_LOANS = (BASE_DATA_DIR / "delta_staging" / "dead_letter" / "loans").as_uri()

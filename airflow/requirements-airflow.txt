@@ -1,0 +1,6 @@
+apache-airflow
+apache-airflow-providers-openlineage
+pyspark == 3.5.8
+kafka-python
+faker
+delta-spark == 3.2.0
